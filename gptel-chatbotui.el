@@ -60,10 +60,10 @@ ChatbotUI models.")
 (cl-defmethod gptel--request-data ((_backend gptel-chatbotui) prompts)
   "JSON encode PROMPTS for ChatbotUI."
   (let* ((model-plist
-          `(:id "gpt-4-32k"
-            :name "GPT-4-32K"
+          `(:id ,(gptel--model-name gptel-model)
+            :name ,(upcase (gptel--model-name gptel-model))
             :maxLength 96000
-            :tokenLimit 32000)))
+            :tokenLimit 128000)))
     `(:model ,model-plist
       :messages ,(plist-get prompts :messages)
       :key ""
