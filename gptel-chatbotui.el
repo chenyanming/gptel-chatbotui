@@ -100,7 +100,10 @@ ChatbotUI models.")
             :key ""
             :prompt ,(plist-get prompts :system)
             :temperature ,(or (plist-get prompts :temperature) 1)
-            :info ,(plist-get (elt (plist-get prompts :messages) 0) :base64image))))
+            :info ,(plist-get (elt (plist-get prompts :messages)
+                                   (1- (length (plist-get prompts :messages))))
+                              :base64image))))
+    ;; DEBUG
     ;; (pp data-plist)
     data-plist))
 
