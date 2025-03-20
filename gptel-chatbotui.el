@@ -57,44 +57,65 @@ ChatbotUI models.")
       (setq content (concat content "\n" (match-string 0))))
     (string-trim (replace-regexp-in-string "([a-f0-9]+ \\. [0-9]+)" "" content))))
 
+(defun gptel--extract-content-and-base64image (data)
+  "Extract content and base64image from a nested input list or vector containing multiple roles."
+  (let (result)
+    (dolist (item data)
+      (let* ((role (plist-get item :role))
+             (content-array (plist-get item :content))
+             (content nil)
+             (base64image nil))
+        (if (vectorp content-array)
+            ;; Handle vector content
+            (dolist (sub-item (append content-array nil))
+              (let ((type (plist-get sub-item :type)))
+                (cond
+                 ((string-equal type "text")
+                  (setq content (plist-get sub-item :text)))
+                 ((string-equal type "image_url")
+                  (setq base64image (plist-get (plist-get sub-item :image_url) :url))))))
+          ;; Handle direct text content
+          (setq content content-array))
+        ;; Build the result plist
+        (let ((result-item `(:role ,role :content ,content)))
+          (when base64image
+            (setq result-item (append result-item `(:base64image ,base64image))))
+          (setq result (append result (list result-item))))))
+    (vconcat result)))
+
 (cl-defmethod gptel--request-data ((_backend gptel-chatbotui) prompts)
   "JSON encode PROMPTS for ChatbotUI."
+  (when gptel--system-message
+    (setq prompts
+          `(:system ,gptel--system-message
+            :messages ,(gptel--extract-content-and-base64image prompts))))
   (let* ((model-plist
           `(:id ,(gptel--model-name gptel-model)
             :name ,(upcase (gptel--model-name gptel-model))
             :maxLength 96000
-            :tokenLimit 128000)))
-    `(:model ,model-plist
-      :messages ,(plist-get prompts :messages)
-      :key ""
-      :prompt ,(plist-get prompts :system)
-      :temperature ,(or (plist-get prompts :temperature) 1)
-      :info ,(plist-get prompts :info))))
+            :tokenLimit 128000))
+         (data-plist
+          `(:model ,model-plist
+            :messages ,(plist-get prompts :messages)
+            :key ""
+            :prompt ,(plist-get prompts :system)
+            :temperature ,(or (plist-get prompts :temperature) 1)
+            :info ,(plist-get (elt (plist-get prompts :messages) 0) :base64image))))
+    ;; (pp data-plist)
+    data-plist))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-chatbotui) max-entries)
   "Parse current buffer backwards from point and return a list of prompts."
-  (let ((prompts) (prop))
-    (while (and
-            (or (not max-entries) (>= max-entries 0))
-            (setq prop (text-property-search-backward
-                        'gptel 'response
-                        (when (get-char-property (max (point-min) (1- (point)))
-                                                 'gptel)
-                          t))))
-      (push (list :role (if (prop-match-value prop) "assistant" "user")
-                  :content
-                  (string-trim
-                   (buffer-substring-no-properties (prop-match-beginning prop)
-                                                   (prop-match-end prop))
-                   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                           (regexp-quote (gptel-prompt-prefix-string)))
-                   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                           (regexp-quote (gptel-response-prefix-string)))))
-            prompts)
-      (and max-entries (cl-decf max-entries)))
-    (list
-     :system gptel--system-message
-     :messages (vconcat prompts))))
+  (gptel--parse-buffer gptel--openai max-entries))
+
+
+(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-chatbotui) prompts
+                                       &optional inject-media)
+  "Wrap the last user prompt in PROMPTS with the context string.
+
+If INJECT-MEDIA is non-nil wrap it with base64-encoded media
+files in the context."
+  (gptel--wrap-user-prompt gptel--openai prompts inject-media))
 
 ;;;###autoload
 (cl-defun gptel-make-chatbotui
