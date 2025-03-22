@@ -39,9 +39,10 @@ ChatbotUI models.")
 ;; Define parsing response methods here
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-chatbotui) _info)
   "Parse streaming response from ChatbotUI."
+  (goto-char (point-min))
   (when (bobp)
-    (re-search-forward "\r\n\r\n")
-    (forward-line 0))
+    (while (re-search-forward "\r\n\r\n" nil t)
+      (forward-line 0)))
   (let ((content "")
         (content-end (point-max)))
     (while (re-search-forward "\\(.+\\)$" content-end t) ; (re-search-forward "([a-f0-9]+ \\. [0-9]+)" nil t)
